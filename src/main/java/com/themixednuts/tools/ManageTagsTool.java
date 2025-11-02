@@ -49,7 +49,7 @@ import java.util.stream.StreamSupport;
       "fileName": "program.exe",
       "action": "add",
       "function_name": "main",
-      "tag": "entry_point"
+      "tags": ["entry_point"]
     }
 
     Add multiple tags to a function:
@@ -57,7 +57,7 @@ import java.util.stream.StreamSupport;
       "fileName": "program.exe",
       "action": "add",
       "address": "0x401000",
-      "tag": "crypto,important"
+      "tags": ["crypto", "important"]
     }
 
     List all tags for a function:
@@ -72,7 +72,7 @@ import java.util.stream.StreamSupport;
       "fileName": "program.exe",
       "action": "remove",
       "address": "0x401000",
-      "tag": "temp"
+      "tags": ["temp"]
     }
     </examples>
     """
@@ -81,7 +81,7 @@ public class ManageTagsTool implements IGhidraMcpSpecification {
 
     public static final String ARG_ACTION = "action";
     public static final String ARG_FUNCTION_NAME = "function_name";
-    public static final String ARG_TAG = "tag";
+    public static final String ARG_TAGS = "tags";
 
     private static final String ACTION_ADD = "add";
     private static final String ACTION_LIST = "list";
@@ -114,8 +114,9 @@ public class ManageTagsTool implements IGhidraMcpSpecification {
         schemaRoot.property(ARG_FUNCTION_NAME, JsonSchemaBuilder.string(mapper)
                 .description("Function name to identify target function"));
 
-        schemaRoot.property(ARG_TAG, JsonSchemaBuilder.string(mapper)
-                .description("Tag name(s) to add or remove. Multiple tags can be separated by commas."));
+        schemaRoot.property(ARG_TAGS, JsonSchemaBuilder.array(mapper)
+                .items(JsonSchemaBuilder.string(mapper))
+                .description("Tag name(s) to add or remove as an array of strings."));
 
         schemaRoot.requiredProperty(ARG_FILE_NAME)
                 .requiredProperty(ARG_ACTION);
@@ -171,12 +172,10 @@ public class ManageTagsTool implements IGhidraMcpSpecification {
      */
     private Mono<? extends Object> handleAdd(Program program, Map<String, Object> args, GhidraMcpTool annotation) {
         String toolOperation = annotation.mcpName() + ".add";
-        String tagArg = getRequiredStringArgument(args, ARG_TAG);
+        List<String> tagNames = getTagsFromArgs(args);
 
         return resolveFunction(program, args, annotation, toolOperation)
             .flatMap(function -> executeInTransaction(program, "MCP - Add Tag(s) to " + function.getName(), () -> {
-                // Split by comma to support multiple tags
-                String[] tagNames = tagArg.split(",");
                 List<String> addedTags = new ArrayList<>();
                 List<String> existingTags = new ArrayList<>();
 
@@ -264,12 +263,10 @@ public class ManageTagsTool implements IGhidraMcpSpecification {
      */
     private Mono<? extends Object> handleRemove(Program program, Map<String, Object> args, GhidraMcpTool annotation) {
         String toolOperation = annotation.mcpName() + ".remove";
-        String tagArg = getRequiredStringArgument(args, ARG_TAG);
+        List<String> tagNames = getTagsFromArgs(args);
 
         return resolveFunction(program, args, annotation, toolOperation)
             .flatMap(function -> executeInTransaction(program, "MCP - Remove Tag(s) from " + function.getName(), () -> {
-                // Split by comma to support multiple tags
-                String[] tagNames = tagArg.split(",");
                 List<String> removedTags = new ArrayList<>();
                 List<String> notFoundTags = new ArrayList<>();
 
@@ -314,6 +311,32 @@ public class ManageTagsTool implements IGhidraMcpSpecification {
                     .success("remove_tags", function.getEntryPoint().toString(), message)
                     .setMetadata(metadata);
             }));
+    }
+
+    /**
+     * Extracts tags from the args map, handling both List and single string values.
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> getTagsFromArgs(Map<String, Object> args) {
+        Object tagsObj = args.get(ARG_TAGS);
+        if (tagsObj == null) {
+            throw new IllegalArgumentException("Missing required argument 'tags'");
+        }
+
+        if (tagsObj instanceof List) {
+            List<?> rawList = (List<?>) tagsObj;
+            List<String> tags = new ArrayList<>();
+            for (Object item : rawList) {
+                if (item instanceof String) {
+                    tags.add((String) item);
+                } else {
+                    throw new IllegalArgumentException("All items in 'tags' array must be strings");
+                }
+            }
+            return tags;
+        } else {
+            throw new IllegalArgumentException("Argument 'tags' must be an array of strings");
+        }
     }
 
     /**
