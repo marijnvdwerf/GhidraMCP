@@ -16,3 +16,4 @@ com.themixednuts.tools.DemanglerTool
 com.themixednuts.tools.ExecuteScriptTool
 com.themixednuts.tools.AnalyzeRttiTool
 com.themixednuts.tools.UndoRedoTool
+com.themixednuts.tools.ManageTagsTool
