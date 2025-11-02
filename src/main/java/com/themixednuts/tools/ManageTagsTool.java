@@ -178,10 +178,18 @@ public class ManageTagsTool implements IGhidraMcpSpecification {
             .flatMap(function -> executeInTransaction(program, "MCP - Add Tag(s) to " + function.getName(), () -> {
                 List<String> addedTags = new ArrayList<>();
                 List<String> existingTags = new ArrayList<>();
+                List<String> failedTags = new ArrayList<>();
 
                 for (String tagName : tagNames) {
                     String trimmedTag = tagName.trim();
                     if (trimmedTag.isEmpty()) {
+                        continue;
+                    }
+
+                    // Validate tag name
+                    String validationError = validateTagName(trimmedTag);
+                    if (validationError != null) {
+                        failedTags.add(trimmedTag + " (" + validationError + ")");
                         continue;
                     }
 
@@ -196,6 +204,8 @@ public class ManageTagsTool implements IGhidraMcpSpecification {
                         boolean success = function.addTag(trimmedTag);
                         if (success) {
                             addedTags.add(trimmedTag);
+                        } else {
+                            failedTags.add(trimmedTag + " (failed to add)");
                         }
                     }
                 }
@@ -206,6 +216,9 @@ public class ManageTagsTool implements IGhidraMcpSpecification {
                 metadata.put("added_tags", addedTags);
                 if (!existingTags.isEmpty()) {
                     metadata.put("already_existing_tags", existingTags);
+                }
+                if (!failedTags.isEmpty()) {
+                    metadata.put("failed_tags", failedTags);
                 }
 
                 // Get all current tags
@@ -522,5 +535,38 @@ public class ManageTagsTool implements IGhidraMcpSpecification {
                         "\"function_name\": \"main\""),
                     null)))
             .build();
+    }
+
+    /**
+     * Validates a tag name for basic constraints.
+     *
+     * @param tagName The tag name to validate (should already be trimmed)
+     * @return null if valid, or an error message if invalid
+     */
+    private String validateTagName(String tagName) {
+        // Check for empty tag
+        if (tagName == null || tagName.isEmpty()) {
+            return "tag name is empty";
+        }
+
+        // Check for excessive length (Ghidra may have internal limits)
+        // Using a conservative limit of 100 characters
+        if (tagName.length() > 100) {
+            return "tag name too long (max 100 characters)";
+        }
+
+        // Check for whitespace-only tag
+        if (tagName.trim().isEmpty()) {
+            return "tag name contains only whitespace";
+        }
+
+        // Check for problematic characters that might cause issues
+        // Ghidra tags generally support alphanumeric and common symbols
+        // but we should avoid control characters and some special chars
+        if (tagName.contains("\n") || tagName.contains("\r") || tagName.contains("\t")) {
+            return "tag name contains control characters";
+        }
+
+        return null;
     }
 }
